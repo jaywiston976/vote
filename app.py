@@ -104,8 +104,16 @@ ADMIN_PASSWORD = "123"
 
 
 def is_admin(user) -> bool:
-    """仅 admin 这一特定账号可以发起 / 管理投票（按真实姓名识别）。"""
-    return bool(user) and user.real_name == ADMIN_NAME
+    """仅 admin 这一特定账号可以发起 / 管理投票。
+
+    以真实姓名识别为主；同时兼容旧库中 username='admin' 而真实姓名仍是
+    「管理员」的历史行，避免升级后管理员权限凭空丢失。普通用户注册时
+    real_name == 'admin' 会被拒绝，且 username 恒等于 real_name，
+    因此 username=='admin' 只可能是管理员账号，不会误判。
+    """
+    if not user:
+        return False
+    return ADMIN_NAME in (user.real_name, user.username)
 
 
 def ensure_admin_account():
@@ -115,26 +123,64 @@ def ensure_admin_account():
     并各自 INSERT，会触发唯一约束冲突。这里捕获 IntegrityError 回滚重查，
     保证任意 worker、任意次数执行都安全且结果一致。
     每次启动都把 admin 密码校正为 123，避免旧库里的旧密码残留。
+
+    兼容旧库：早期版本按 username 识别管理员，admin 行的 real_name 可能是
+    「管理员」/「系统管理员」。登录方式改为「真实姓名」后，这类行既无法用
+    admin 登录，又会因 username 唯一约束导致新建 admin 失败（IntegrityError
+    被回滚吞掉），最终表现为 admin 登录后无法发起与管理投票。这里显式把
+    历史行的 real_name 迁移为 admin，而不是新插入一行。
     """
     from sqlalchemy.exc import IntegrityError
 
     admin = User.query.filter_by(real_name=ADMIN_NAME).first()
-    if admin:
-        # 校正密码，确保始终是 123
+
+    if admin is None:
+        # 旧库迁移：按 username 找到历史管理员行，就地校正真实姓名
+        legacy = User.query.filter_by(username=ADMIN_NAME).first()
+        if legacy is not None:
+            legacy.real_name = ADMIN_NAME
+            legacy.set_password(ADMIN_PASSWORD)
+            try:
+                db.session.commit()
+                admin = legacy
+            except IntegrityError:
+                db.session.rollback()
+                admin = User.query.filter_by(real_name=ADMIN_NAME).first()
+
+    if admin is not None:
+        # 校正密码与 username，确保始终是 admin / 123
+        changed = False
         if not admin.check_password(ADMIN_PASSWORD):
             admin.set_password(ADMIN_PASSWORD)
-            db.session.commit()
+            changed = True
+        if admin.username != ADMIN_NAME:
+            if User.query.filter_by(username=ADMIN_NAME).first() is None:
+                admin.username = ADMIN_NAME
+                changed = True
+        if changed:
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
         return
 
-    # username 字段保留在库中且唯一，这里让它与真实姓名一致
+    # 全新库：username 字段保留在库中且唯一，这里让它与真实姓名一致
     admin = User(username=ADMIN_NAME, real_name=ADMIN_NAME)
     admin.set_password(ADMIN_PASSWORD)
     db.session.add(admin)
     try:
         db.session.commit()
     except IntegrityError:
-        # 另一个 worker 已抢先创建，回滚即可
+        # 另一个 worker 已抢先创建，或存在同名历史行；回滚后重试迁移
         db.session.rollback()
+        legacy = User.query.filter_by(username=ADMIN_NAME).first()
+        if legacy is not None and legacy.real_name != ADMIN_NAME:
+            legacy.real_name = ADMIN_NAME
+            legacy.set_password(ADMIN_PASSWORD)
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
 
 
 def ensure_indexes():
