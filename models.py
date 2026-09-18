@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
 db = SQLAlchemy()
 
@@ -17,11 +17,29 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # 明文密码前缀标记：按用户要求“无需安全防护、只追求极致并发”，
+    # 密码以明文保存并直接字符串比对，密码校验开销近乎为 0，
+    # 彻底消除 free 实例上密码哈希打满 CPU 导致的登录排队。
+    # 注意：这是刻意牺牲安全性换取速度，仅适用于无安全要求的内部场景。
+    _PLAIN_PREFIX = "plain:"
+
     def set_password(self, password: str) -> None:
-        self.password_hash = generate_password_hash(password)
+        self.password_hash = self._PLAIN_PREFIX + (password or "")
 
     def check_password(self, password: str) -> bool:
-        return check_password_hash(self.password_hash, password)
+        stored = self.password_hash or ""
+        if stored.startswith(self._PLAIN_PREFIX):
+            # 明文直接比对，几乎不耗 CPU
+            return stored[len(self._PLAIN_PREFIX):] == (password or "")
+        # 兼容历史哈希账号：仍可登录（登录成功后会被透明转为明文）
+        try:
+            return check_password_hash(stored, password or "")
+        except Exception:
+            return False
+
+    @property
+    def is_plain(self) -> bool:
+        return (self.password_hash or "").startswith(self._PLAIN_PREFIX)
 
 
 class Poll(db.Model):

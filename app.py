@@ -304,6 +304,14 @@ def login():
         if not user or not user.check_password(password):
             flash("用户名或密码错误", "error")
             return render_template("login.html")
+        # 透明迁移：历史哈希账号登录成功后，把密码转存为明文，
+        # 之后该账号登录即为零开销明文比对。不影响现有数据、无需清库。
+        try:
+            if not user.is_plain:
+                user.set_password(password)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
         session["user_id"] = user.id
         flash("登录成功", "ok")
         nxt = request.args.get("next")
@@ -555,10 +563,10 @@ def vote(poll_id):
         flash("发起人不能参与自己发起的投票", "warn")
         return redirect(url_for("manage_poll", poll_id=poll.id))
 
-    link_voters_to_users(poll)
+    # 性能：投票路径不再对整份名单做关联遍历，只精确定位“我自己”的名单记录。
     voter = Voter.query.filter_by(poll_id=poll.id, user_id=user.id).first()
     if not voter:
-        # 兜底：按真实姓名匹配
+        # 兜底：按真实姓名匹配，并只回填自己这一条的关联
         voter = Voter.query.filter_by(poll_id=poll.id, name=user.real_name).first()
         if voter and not voter.user_id:
             voter.user_id = user.id
