@@ -16,7 +16,7 @@
     <label for="nav-toggle" class="nav-btn" aria-label="菜单">☰</label>
     <nav>
       {% if current_user %}
-        <span style="color:#eaf4ee;font-size:14px;">{{ current_user.real_name }}（{{ current_user.username }}）</span>
+        <span style="color:#eaf4ee;font-size:14px;">{{ current_user.real_name }}</span>
         {% if is_admin %}
         <a href="{{ url_for('create_poll') }}">发起投票</a>
         {% endif %}

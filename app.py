@@ -296,11 +296,11 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
+        real_name = (request.form.get("real_name") or "").strip()
         password = request.form.get("password") or ""
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter_by(real_name=real_name).first()
         if not user or not user.check_password(password):
-            flash("用户名或密码错误", "error")
+            flash("姓名或密码错误", "error")
             return render_template("login.html")
         # 透明迁移：历史哈希账号登录成功后，把密码转存为明文，
         # 之后该账号登录即为零开销明文比对。不影响现有数据、无需清库。

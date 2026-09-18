@@ -27,10 +27,10 @@ class Config:
         # 单个 worker 的连接上限 = pool_size + max_overflow。
         # 默认 5+5=10，配合 2 worker 共 ~20 连接，既能撑住 60 人并发操作，
         # 又不超过 Render free PostgreSQL 的连接上限。可用环境变量微调。
-        # 连接池：配合 3 worker，每 worker 上限 = pool_size + max_overflow = 6，
-        # 总计约 18 个连接，控制在 Render free PostgreSQL 连接上限（~20）内。
-        "pool_size": int(os.environ.get("DB_POOL_SIZE", "3")),
-        "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", "3")),
+        # 连接池：配合 2 worker，每 worker 上限 = pool_size + max_overflow = 8，
+        # 总计约 16 个连接，控制在 Render free PostgreSQL 连接上限（~20）内。
+        "pool_size": int(os.environ.get("DB_POOL_SIZE", "4")),
+        "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", "4")),
         "pool_timeout": int(os.environ.get("DB_POOL_TIMEOUT", "30")),
     }
 
