@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.db
+.env
+.venv/
+venv/
+instance/
+.DS_Store
+
+# 本地工具缓存与截图，不参与部署
+.box-agent/
+.playwright-mcp/
+1111.png
+2222.png

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: anonymous-vote
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120"
+    healthCheckPath: /healthz
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: anonymous-vote-db
+          property: connectionString
+
+databases:
+  - name: anonymous-vote-db
+    plan: free
+    databaseName: votedb
+    user: voteuser
