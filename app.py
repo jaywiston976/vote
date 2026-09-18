@@ -98,18 +98,18 @@ def validate_password_charset(password: str):
     return None
 
 
-# 唯一允许发起 / 管理投票的账号
-ADMIN_USERNAME = "admin"
+# 唯一允许发起 / 管理投票的账号：用真实姓名 "admin" 登录，密码 123
+ADMIN_NAME = "admin"
 ADMIN_PASSWORD = "123"
 
 
 def is_admin(user) -> bool:
-    """仅 admin 这一特定账号可以发起 / 管理投票。"""
-    return bool(user) and user.username == ADMIN_USERNAME
+    """仅 admin 这一特定账号可以发起 / 管理投票（按真实姓名识别）。"""
+    return bool(user) and user.real_name == ADMIN_NAME
 
 
 def ensure_admin_account():
-    """确保存在唯一的管理员账号 admin / 123。
+    """确保存在唯一的管理员账号：真实姓名 admin / 密码 123。
 
     抗并发：gunicorn 多 worker 会同时执行本函数，若都判定 admin 不存在
     并各自 INSERT，会触发唯一约束冲突。这里捕获 IntegrityError 回滚重查，
@@ -118,7 +118,7 @@ def ensure_admin_account():
     """
     from sqlalchemy.exc import IntegrityError
 
-    admin = User.query.filter_by(username=ADMIN_USERNAME).first()
+    admin = User.query.filter_by(real_name=ADMIN_NAME).first()
     if admin:
         # 校正密码，确保始终是 123
         if not admin.check_password(ADMIN_PASSWORD):
@@ -126,10 +126,8 @@ def ensure_admin_account():
             db.session.commit()
         return
 
-    real_name = "管理员"
-    if User.query.filter_by(real_name=real_name).first():
-        real_name = "系统管理员"
-    admin = User(username=ADMIN_USERNAME, real_name=real_name)
+    # username 字段保留在库中且唯一，这里让它与真实姓名一致
+    admin = User(username=ADMIN_NAME, real_name=ADMIN_NAME)
     admin.set_password(ADMIN_PASSWORD)
     db.session.add(admin)
     try:
@@ -263,13 +261,12 @@ def index():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
         real_name = (request.form.get("real_name") or "").strip()
         password = request.form.get("password") or ""
         password2 = request.form.get("password2") or ""
 
-        if not username or not real_name or not password:
-            flash("用户名、真实姓名、密码均不能为空", "error")
+        if not real_name or not password:
+            flash("真实姓名、密码均不能为空", "error")
             return render_template("register.html")
         if password != password2:
             flash("两次输入的密码不一致", "error")
@@ -278,14 +275,15 @@ def register():
         if pwd_error:
             flash(pwd_error, "error")
             return render_template("register.html")
-        if User.query.filter_by(username=username).first():
-            flash("该用户名已被使用，请更换", "error")
+        if real_name == ADMIN_NAME:
+            flash("该姓名为系统保留，请更换", "error")
             return render_template("register.html")
         if User.query.filter_by(real_name=real_name).first():
-            flash("该真实姓名已被注册，实名只能唯一", "error")
+            flash("该真实姓名已被注册，姓名只能唯一", "error")
             return render_template("register.html")
 
-        user = User(username=username, real_name=real_name)
+        # 用真实姓名作为账号；底层 username 字段与真实姓名保持一致
+        user = User(username=real_name, real_name=real_name)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
