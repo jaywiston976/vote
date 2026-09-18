@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}注册 · 匿名投票系统{% endblock %}
+{% block content %}
+<h1 class="page-title">注册账号</h1>
+<div class="card" style="max-width:460px;margin:0 auto;">
+  <form method="post">
+    <label>用户名 <span class="hint">（唯一，用于登录，可用昵称）</span></label>
+    <input type="text" name="username" required autocomplete="off" placeholder="例如：zhangsan2026">
+
+    <label>真实姓名 <span class="hint">（请务必使用真名，用于匹配投票名单）</span></label>
+    <input type="text" name="real_name" required autocomplete="off" placeholder="例如：张三">
+
+    <label>密码 <span class="hint">（只能使用大小写字母和数字，三选一即可）</span></label>
+    <input type="password" name="password" required pattern="[A-Za-z0-9]+" title="只能使用大小写字母和数字（大写、小写、数字，三选一即可）" autocomplete="new-password" placeholder="仅限字母和数字，可用弱密码">
+
+    <label>确认密码</label>
+    <input type="password" name="password2" required autocomplete="new-password">
+
+    <div class="mt"><button class="btn" type="submit">注册</button></div>
+    <p class="small muted mt">已有账号？<a href="{{ url_for('login') }}">去登录</a></p>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}匿名投票系统{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+      <span class="logo">农</span>
+      <span>匿名投票系统</span>
+    </a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <label for="nav-toggle" class="nav-btn" aria-label="菜单">☰</label>
+    <nav>
+      {% if current_user %}
+        <span style="color:#eaf4ee;font-size:14px;">{{ current_user.real_name }}（{{ current_user.username }}）</span>
+        {% if is_admin %}
+        <a href="{{ url_for('create_poll') }}">发起投票</a>
+        {% endif %}
+        <a href="{{ url_for('index') }}">我的主页</a>
+        <a href="{{ url_for('logout') }}">退出</a>
+      {% else %}
+        <a href="{{ url_for('login') }}">登录</a>
+        <a href="{{ url_for('register') }}">注册</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, msg in messages %}
+        <div class="flash {{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+
+  <div class="footer">中国农业大学 · 匿名投票系统 &nbsp;|&nbsp; 对参与者匿名，发起人可查看明细</div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

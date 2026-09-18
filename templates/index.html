@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not current_user %}
+  <div class="card center">
+    <h2>欢迎使用匿名投票系统</h2>
+    <p class="muted">对参与者完全匿名 · 发起人可查看明细 · 支持名单导入与实时进度</p>
+    <div class="row" style="justify-content:center;margin-top:16px;">
+      <a class="btn" href="{{ url_for('register') }}">注册</a>
+      <a class="btn secondary" href="{{ url_for('login') }}">登录</a>
+    </div>
+  </div>
+{% else %}
+  <h1 class="page-title">我的主页</h1>
+
+  {% if is_admin %}
+  <div class="card">
+    <div class="row between">
+      <h2 style="margin:0;">我发起的投票</h2>
+      <a class="btn" href="{{ url_for('create_poll') }}">＋ 发起新投票</a>
+    </div>
+    {% if polls %}
+      <ul class="poll-list mt">
+        {% for p in polls %}
+          <li>
+            <div>
+              <div class="title">{{ p.title }}</div>
+              <div class="small muted">
+                {% if p.is_closed %}<span class="badge gray">已结束</span>{% else %}<span class="badge green">进行中</span>{% endif %}
+                {% if p.is_published %}<span class="badge gold">已公布票数</span>{% endif %}
+                共 {{ p.voters|length }} 名投票者
+              </div>
+            </div>
+            <a class="btn secondary sm" href="{{ url_for('manage_poll', poll_id=p.id) }}">管理</a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted mt">还没有发起过投票。</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>邀请我参与的投票</h2>
+    {% if invited %}
+      <ul class="poll-list mt">
+        {% for p in invited %}
+          <li>
+            <div>
+              <div class="title">{{ p.title }}</div>
+              <div class="small muted">
+                {% if p.is_closed %}<span class="badge gray">已结束</span>{% else %}<span class="badge green">进行中</span>{% endif %}
+                发起人：{{ p.creator.real_name }}
+              </div>
+            </div>
+            <a class="btn sm" href="{{ url_for('vote', poll_id=p.id) }}">去投票</a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted mt">暂时没有邀请你参与的投票。<br>
+      <span class="small">提示：发起人按你的<b>真实姓名</b>导入名单后，这里会自动出现对应投票。</span></p>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

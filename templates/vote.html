@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ poll.title }} · 投票{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ poll.title }}</h1>
+
+<div class="card">
+  {% if poll.description %}<p class="muted">{{ poll.description }}</p>{% endif %}
+  <p class="small muted">发起人：{{ poll.creator.real_name }}
+    {% if poll.is_closed %}<span class="badge gray">已结束</span>{% else %}<span class="badge green">进行中</span>{% endif %}
+  </p>
+
+  {% if has_voted %}
+    <div class="flash ok" style="margin-top:16px;">
+      你已完成投票。你的选择是：<b>{{ my_choice }}</b>
+    </div>
+    {% if not results %}
+    <p class="muted small">为保护匿名，你只能看到自己的投票，无法查看他人的选择。各选项票数需等发起人公布后才可见。</p>
+    {% endif %}
+
+  {% elif poll.is_closed %}
+    <div class="flash warn" style="margin-top:16px;">投票已结束，你未在结束前投票。</div>
+
+  {% else %}
+    <form method="post" class="mt">
+      {% for opt in options %}
+        <label class="vote-option {% if opt.is_abstain %}abstain{% endif %}">
+          <input type="radio" name="option_id" value="{{ opt.id }}" required>
+          {{ opt.name }}{% if opt.is_abstain %}（弃票）{% endif %}
+        </label>
+      {% endfor %}
+      <button class="btn mt" type="submit"
+              onclick="return confirm('投票后无法修改，确定提交？');">提交投票</button>
+    </form>
+    <p class="small muted mt">
+      本次投票{% if poll.allow_self_vote %}允许{% else %}不允许{% endif %}投给自己 ·
+      投票完全匿名，其他参与者与你都无法查看谁投了谁。
+    </p>
+  {% endif %}
+
+  {% if results %}
+    <div class="mt" style="border-top:1px solid #e5e7eb;padding-top:16px;margin-top:20px;">
+      <h2 style="margin:0 0 4px;">投票结果</h2>
+      <p class="small muted">发起人已公布票数 · 共 {{ total_votes }} 票（结果匿名，不显示投票人）</p>
+      <ul class="result-list mt">
+        {% for r in results %}
+          <li style="margin-bottom:12px;">
+            <div class="row between" style="margin-bottom:4px;">
+              <span>{{ r.name }}{% if r.is_abstain %}（弃票）{% endif %}</span>
+              <span class="small muted"><b>{{ r.count }}</b> 票 · {{ r.percent }}%</span>
+            </div>
+            <div style="background:#eef1f4;border-radius:6px;height:10px;overflow:hidden;">
+              <div style="width:{{ r.percent }}%;height:100%;background:#3b8a5a;"></div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="mt"><a class="btn secondary sm" href="{{ url_for('index') }}">返回主页</a></div>
+</div>
+{% endblock %}

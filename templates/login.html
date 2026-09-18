@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}登录 · 匿名投票系统{% endblock %}
+{% block content %}
+<h1 class="page-title">登录</h1>
+<div class="card" style="max-width:460px;margin:0 auto;">
+  <form method="post">
+    <label>用户名</label>
+    <input type="text" name="username" required autocomplete="username">
+
+    <label>密码</label>
+    <input type="password" name="password" required autocomplete="current-password">
+
+    <div class="mt"><button class="btn" type="submit">登录</button></div>
+    <p class="small muted mt">还没有账号？<a href="{{ url_for('register') }}">去注册</a></p>
+  </form>
+</div>
+{% endblock %}

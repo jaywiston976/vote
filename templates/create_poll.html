@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}发起投票 · 匿名投票系统{% endblock %}
+{% block content %}
+<h1 class="page-title">发起投票</h1>
+<div class="card">
+  <form method="post" enctype="multipart/form-data">
+    <label>投票标题</label>
+    <input type="text" name="title" required placeholder="例如：2026 年度优秀班干部评选">
+
+    <label>投票说明 <span class="hint">（可选）</span></label>
+    <textarea name="description" placeholder="补充说明……"></textarea>
+
+    <hr class="divider">
+
+    <label>投票选项 <span class="hint">（自定义名称与数量，至少 2 个）</span></label>
+    <div id="options-wrap">
+      <div class="option-item">
+        <input type="text" name="options" placeholder="选项 1">
+        <button type="button" class="btn secondary sm" onclick="removeOption(this)">删除</button>
+      </div>
+      <div class="option-item">
+        <input type="text" name="options" placeholder="选项 2">
+        <button type="button" class="btn secondary sm" onclick="removeOption(this)">删除</button>
+      </div>
+    </div>
+    <button type="button" class="btn secondary sm" onclick="addOption()">＋ 添加选项</button>
+
+    <hr class="divider">
+
+    <div class="row">
+      <label style="margin:0;">
+        <input type="checkbox" name="allow_abstain" style="width:auto;"> 设置「弃票」选项
+      </label>
+    </div>
+
+    <label class="mt">投票者能否投给自己？</label>
+    <div class="row">
+      <label style="margin:0;font-weight:400;">
+        <input type="radio" name="allow_self_vote" value="no" checked style="width:auto;"> 否（默认）
+      </label>
+      <label style="margin:0;font-weight:400;">
+        <input type="radio" name="allow_self_vote" value="yes" style="width:auto;"> 能
+      </label>
+    </div>
+
+    <hr class="divider">
+
+    <label>投票者名单 <span class="hint">（发起人不计入名单，无法参与投票）</span></label>
+    <textarea name="voter_names" placeholder="每行一个姓名，或用逗号 / 顿号分隔。例如：&#10;张三&#10;李四&#10;王五"></textarea>
+
+    <label class="mt">或导入 Excel / CSV 名单 <span class="hint">（取第一列姓名）</span></label>
+    <input type="file" name="voter_file" accept=".xlsx,.xls,.csv,image/*">
+    <p class="small muted">支持 .xlsx / .xls / .csv 自动读取；图片名单请手动录入到上方文本框。名单按<b>真实姓名</b>匹配注册用户。</p>
+
+    <div class="mt"><button class="btn" type="submit">创建投票</button></div>
+  </form>
+</div>
+
+<script>
+let count = 2;
+function addOption() {
+  count++;
+  const wrap = document.getElementById('options-wrap');
+  const div = document.createElement('div');
+  div.className = 'option-item';
+  div.innerHTML = '<input type="text" name="options" placeholder="选项 ' + count + '">' +
+    '<button type="button" class="btn secondary sm" onclick="removeOption(this)">删除</button>';
+  wrap.appendChild(div);
+}
+function removeOption(btn) {
+  const wrap = document.getElementById('options-wrap');
+  if (wrap.children.length <= 2) { alert('至少保留 2 个选项'); return; }
+  btn.parentElement.remove();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}{{ poll.title }} · 管理{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ poll.title }}</h1>
+
+<div class="card">
+  <div class="row between">
+    <div>
+      {% if poll.is_closed %}<span class="badge gray">已结束</span>{% else %}<span class="badge green">进行中</span>{% endif %}
+      {% if poll.is_published %}<span class="badge gold">已公布票数</span>{% endif %}
+      {% if poll.allow_abstain %}<span class="badge green">含弃票</span>{% endif %}
+      {% if poll.allow_self_vote %}<span class="badge green">可投自己</span>{% else %}<span class="badge gray">不可投自己</span>{% endif %}
+    </div>
+    <div class="row">
+      {% if not poll.is_closed %}
+        <form method="post" action="{{ url_for('close_poll', poll_id=poll.id) }}"
+              onsubmit="return confirm('确定结束投票？结束后无法再投票。');">
+          <button class="btn danger sm" type="submit">结束投票</button>
+        </form>
+      {% else %}
+        <form method="post" action="{{ url_for('publish_poll', poll_id=poll.id) }}">
+          <button class="btn gold sm" type="submit">
+            {% if poll.is_published %}取消公布票数{% else %}公布票数{% endif %}
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if poll.description %}<p class="muted mt">{{ poll.description }}</p>{% endif %}
+</div>
+
+<!-- 实时进度 -->
+<div class="card">
+  <div class="row between">
+    <h2 style="margin:0;">投票进度 <span class="small muted">（自动刷新）</span></h2>
+    <span class="small muted" id="refresh-tip">●&nbsp;实时更新中</span>
+  </div>
+  <div class="stat-grid mt">
+    <div class="stat-box"><div class="num" id="stat-total">0</div><div class="lbl">应投人数</div></div>
+    <div class="stat-box"><div class="num" id="stat-voted">0</div><div class="lbl">已投票</div></div>
+    <div class="stat-box"><div class="num" id="stat-pending">0</div><div class="lbl">未投票</div></div>
+  </div>
+
+  <h3 class="mt" style="color:var(--warn);">尚未投票（<span id="pending-count">0</span>）</h3>
+  <div class="name-chips" id="pending-list"><span class="muted small">加载中…</span></div>
+
+  <h3 class="mt" style="color:var(--cau-green-dark);">已投票（<span id="voted-count">0</span>）</h3>
+  <div class="name-chips" id="voted-list"><span class="muted small">加载中…</span></div>
+</div>
+
+<!-- 追加名单 -->
+<div class="card">
+  <h2>追加投票者名单</h2>
+  <form method="post" action="{{ url_for('add_voter', poll_id=poll.id) }}" enctype="multipart/form-data">
+    <textarea name="voter_names" placeholder="每行一个姓名，或逗号 / 顿号分隔"></textarea>
+    <label class="mt">或导入 Excel / CSV</label>
+    <input type="file" name="voter_file" accept=".xlsx,.xls,.csv">
+    <div class="mt"><button class="btn secondary" type="submit">追加名单</button></div>
+  </form>
+</div>
+
+<!-- 票数明细 -->
+<div class="card">
+  <div class="row between">
+    <h2 style="margin:0;">票数明细</h2>
+    <div class="row">
+      <span class="small">显示投票者名字</span>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-names" {% if poll.show_voter_names %}checked{% endif %}>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+  <p class="small muted">此处仅发起人可见。开关控制是否在每个选项后显示投票者姓名。</p>
+  <div id="results" class="mt"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const POLL_ID = {{ poll.id }};
+const STATUS_URL = "{{ url_for('poll_status', poll_id=poll.id) }}";
+const TOGGLE_URL = "{{ url_for('toggle_names', poll_id=poll.id) }}";
+let showNames = {{ 'true' if poll.show_voter_names else 'false' }};
+
+function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':s; return d.innerHTML; }
+
+function render(data) {
+  document.getElementById('stat-total').textContent = data.total;
+  document.getElementById('stat-voted').textContent = data.voted_count;
+  document.getElementById('stat-pending').textContent = data.not_voted_count;
+  document.getElementById('voted-count').textContent = data.voted_count;
+  document.getElementById('pending-count').textContent = data.not_voted_count;
+
+  const pending = document.getElementById('pending-list');
+  pending.innerHTML = data.not_voted.length
+    ? data.not_voted.map(v => '<span class="chip pending">' + esc(v.name) +
+        (v.registered ? '' : ' <span title="尚未注册对应账号">*</span>') + '</span>').join('')
+    : '<span class="muted small">全部已投票 🎉</span>';
+
+  const voted = document.getElementById('voted-list');
+  voted.innerHTML = data.voted.length
+    ? data.voted.map(v => '<span class="chip voted">' + esc(v.name) + '</span>').join('')
+    : '<span class="muted small">暂无</span>';
+
+  showNames = data.show_voter_names;
+  document.getElementById('toggle-names').checked = showNames;
+
+  const totalVotes = data.options.reduce((s,o)=>s+o.count,0) || 1;
+  const results = document.getElementById('results');
+  results.innerHTML = data.options.map(o => {
+    const pct = Math.round(o.count / totalVotes * 100);
+    let names = '';
+    if (showNames && o.voters.length) {
+      names = '<div class="voter-names">投票者：' + o.voters.map(esc).join('、') + '</div>';
+    }
+    return '<div class="result-bar-wrap">' +
+      '<div class="result-bar-head"><span>' + esc(o.name) +
+      (o.is_abstain ? ' <span class="badge gray">弃票</span>' : '') +
+      '</span><span><b>' + o.count + '</b> 票 · ' + pct + '%</span></div>' +
+      '<div class="result-bar"><div class="fill" style="width:' + pct + '%"></div></div>' +
+      names + '</div>';
+  }).join('');
+}
+
+async function refresh() {
+  try {
+    const r = await fetch(STATUS_URL, {cache:'no-store'});
+    if (r.ok) { render(await r.json()); }
+  } catch(e) {}
+}
+
+document.getElementById('toggle-names').addEventListener('change', async function(){
+  const r = await fetch(TOGGLE_URL, {method:'POST'});
+  if (r.ok) { const d = await r.json(); showNames = d.show_voter_names; refresh(); }
+});
+
+refresh();
+setInterval(refresh, 4000);
+</script>
+{% endblock %}
