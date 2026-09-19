@@ -17,11 +17,7 @@ app.config.from_object(Config)
 db.init_app(app)
 
 with app.app_context():
-    # 受环境变量开关控制的一次性数据库重置：
-    # 在 Render 设置 RESET_DB=1 并触发一次部署即可清空所有数据并重建表结构；
-    # 清空后请把该环境变量删除或改为 0，避免此后每次重启都清库。
-    if os.environ.get("RESET_DB", "0") == "1":
-        db.drop_all()
+    # 表结构不存在时自动补齐（幂等，不会改动已存在的表，也不会清空任何数据）
     db.create_all()
 
 
@@ -98,9 +94,15 @@ def validate_password_charset(password: str):
     return None
 
 
-# 唯一允许发起 / 管理投票的账号：用真实姓名 "admin" 登录，密码 123
+# 唯一允许发起 / 管理投票的账号：用真实姓名 "admin" 登录。
+#
+# 密码来源优先级：
+#   1. 环境变量 ADMIN_PASSWORD（推荐：在 Render 面板改，改完自动重新部署，不用动代码）
+#   2. 下面的默认值
+# 注意：这个常量是 ensure_admin_account() 每次启动「强制校正」的目标值，
+# 直接去数据库改 admin 的密码是无效的，下次启动会被覆盖回来。
 ADMIN_NAME = "admin"
-ADMIN_PASSWORD = "123"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "muyu123")
 
 
 def is_admin(user) -> bool:
@@ -117,12 +119,12 @@ def is_admin(user) -> bool:
 
 
 def ensure_admin_account():
-    """确保存在唯一的管理员账号：真实姓名 admin / 密码 123。
+    """确保存在唯一的管理员账号：真实姓名 admin / 密码 ADMIN_PASSWORD。
 
     抗并发：gunicorn 多 worker 会同时执行本函数，若都判定 admin 不存在
     并各自 INSERT，会触发唯一约束冲突。这里捕获 IntegrityError 回滚重查，
     保证任意 worker、任意次数执行都安全且结果一致。
-    每次启动都把 admin 密码校正为 123，避免旧库里的旧密码残留。
+    每次启动都把 admin 密码校正为 ADMIN_PASSWORD，避免旧库里的旧密码残留。
 
     兼容旧库：早期版本按 username 识别管理员，admin 行的 real_name 可能是
     「管理员」/「系统管理员」。登录方式改为「真实姓名」后，这类行既无法用
@@ -148,7 +150,7 @@ def ensure_admin_account():
                 admin = User.query.filter_by(real_name=ADMIN_NAME).first()
 
     if admin is not None:
-        # 校正密码与 username，确保始终是 admin / 123
+        # 校正密码与 username，确保始终是 admin / ADMIN_PASSWORD
         changed = False
         if not admin.check_password(ADMIN_PASSWORD):
             admin.set_password(ADMIN_PASSWORD)
