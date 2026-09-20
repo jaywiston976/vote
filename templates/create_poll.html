@@ -27,9 +27,14 @@
 
     <hr class="divider">
 
-    <div class="row">
+    <label>每人拥有的票数 <span class="hint">（必须投满，且必须投给不同的人）</span></label>
+    <input type="number" name="votes_per_voter" id="votes-per-voter" min="1" max="100" value="1" style="max-width:160px;">
+    <p class="small muted" id="quota-tip"></p>
+
+    <div class="row mt">
       <label style="margin:0;">
-        <input type="checkbox" name="allow_abstain" style="width:auto;"> 设置「弃票」选项
+        <input type="checkbox" name="allow_abstain" style="width:auto;"> 允许「弃票」
+        <span class="hint">（选弃票的投票者将一票都不投）</span>
       </label>
     </div>
 
@@ -42,6 +47,7 @@
         <input type="radio" name="allow_self_vote" value="yes" style="width:auto;"> 能
       </label>
     </div>
+    <p class="small muted">选择「否」时，选项名与本人真实姓名一致的选项会自动从该用户的投票页消失，保证投不到自己。</p>
 
     <hr class="divider">
 
@@ -66,11 +72,36 @@ function addOption() {
   div.innerHTML = '<input type="text" name="options" placeholder="选项 ' + count + '">' +
     '<button type="button" class="btn secondary sm" onclick="removeOption(this)">删除</button>';
   wrap.appendChild(div);
+  updateQuotaTip();
 }
 function removeOption(btn) {
   const wrap = document.getElementById('options-wrap');
   if (wrap.children.length <= 2) { alert('至少保留 2 个选项'); return; }
   btn.parentElement.remove();
+  updateQuotaTip();
 }
+
+// 实时提示：当前选项数下，每人票数最多能设多少
+function updateQuotaTip() {
+  const wrap = document.getElementById('options-wrap');
+  const inputs = wrap.querySelectorAll('input[name=options]');
+  let n = 0;
+  inputs.forEach(i => { if (i.value.trim()) n++; });
+  const selfVote = (document.querySelector('input[name=allow_self_vote]:checked') || {}).value === 'yes';
+  const capacity = Math.max(n - (selfVote ? 0 : 1), 0);
+  const q = parseInt(document.getElementById('votes-per-voter').value || '1', 10) || 1;
+  const tip = document.getElementById('quota-tip');
+  tip.textContent = '当前已填 ' + n + ' 个选项，每人最多可设 ' + capacity + ' 票' +
+    (selfVote ? '（允许投自己）' : '（不允许投自己，每人会少掉与自己同名的那一项）') +
+    (q > capacity ? ' — 当前设置 ' + q + ' 票已超上限，创建会被拒绝。' : '');
+  tip.style.color = q > capacity ? 'var(--danger)' : '';
+}
+
+document.getElementById('options-wrap').addEventListener('input', updateQuotaTip);
+document.getElementById('votes-per-voter').addEventListener('input', updateQuotaTip);
+document.querySelectorAll('input[name=allow_self_vote]').forEach(function (r) {
+  r.addEventListener('change', updateQuotaTip);
+});
+updateQuotaTip();
 </script>
 {% endblock %}

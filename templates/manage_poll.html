@@ -8,10 +8,12 @@
     <div>
       {% if poll.is_closed %}<span class="badge gray">已结束</span>{% else %}<span class="badge green">进行中</span>{% endif %}
       {% if poll.is_published %}<span class="badge gold">已公布票数</span>{% endif %}
+      <span class="badge gold">每人 {{ poll.votes_per_voter or 1 }} 票</span>
       {% if poll.allow_abstain %}<span class="badge green">含弃票</span>{% endif %}
       {% if poll.allow_self_vote %}<span class="badge green">可投自己</span>{% else %}<span class="badge gray">不可投自己</span>{% endif %}
     </div>
     <div class="row">
+      <a class="btn secondary sm" href="{{ url_for('export_poll', poll_id=poll.id) }}">导出 Excel</a>
       {% if not poll.is_closed %}
         <form method="post" action="{{ url_for('close_poll', poll_id=poll.id) }}"
               onsubmit="return confirm('确定结束投票？结束后无法再投票。');">
@@ -35,10 +37,13 @@
     <h2 style="margin:0;">投票进度 <span class="small muted">（自动刷新）</span></h2>
     <span class="small muted" id="refresh-tip">●&nbsp;实时更新中</span>
   </div>
-  <div class="stat-grid mt">
+  <div class="stat-grid mt{% if poll.allow_abstain %} four{% endif %}">
     <div class="stat-box"><div class="num" id="stat-total">0</div><div class="lbl">应投人数</div></div>
     <div class="stat-box"><div class="num" id="stat-voted">0</div><div class="lbl">已投票</div></div>
     <div class="stat-box"><div class="num" id="stat-pending">0</div><div class="lbl">未投票</div></div>
+    {% if poll.allow_abstain %}
+    <div class="stat-box"><div class="num" id="stat-abstain">0</div><div class="lbl">其中弃票</div></div>
+    {% endif %}
   </div>
 
   <h3 class="mt" style="color:var(--warn);">尚未投票（<span id="pending-count">0</span>）</h3>
@@ -71,7 +76,9 @@
       </label>
     </div>
   </div>
-  <p class="small muted">此处仅发起人可见。开关控制是否在每个选项后显示投票者姓名。</p>
+  <p class="small muted">此处仅发起人可见。开关控制是否在每个选项后显示投票者姓名。
+    本次每人 <b>{{ poll.votes_per_voter or 1 }}</b> 票；弃票的人不在任何选项里计票，只在「已投票」列表中标注。
+    需要完整明细（每人投票时间、投给了谁）请用上方「导出 Excel」。</p>
   <div id="results" class="mt"></div>
 </div>
 
@@ -90,6 +97,8 @@ function render(data) {
   document.getElementById('stat-total').textContent = data.total;
   document.getElementById('stat-voted').textContent = data.voted_count;
   document.getElementById('stat-pending').textContent = data.not_voted_count;
+  const sa = document.getElementById('stat-abstain');
+  if (sa) sa.textContent = data.abstain_count;
   document.getElementById('voted-count').textContent = data.voted_count;
   document.getElementById('pending-count').textContent = data.not_voted_count;
 
@@ -101,7 +110,8 @@ function render(data) {
 
   const voted = document.getElementById('voted-list');
   voted.innerHTML = data.voted.length
-    ? data.voted.map(v => '<span class="chip voted">' + esc(v.name) + '</span>').join('')
+    ? data.voted.map(v => '<span class="chip ' + (v.abstained ? 'abstain-chip' : 'voted') + '">' +
+        esc(v.name) + (v.abstained ? ' · 弃票' : '') + '</span>').join('')
     : '<span class="muted small">暂无</span>';
 
   showNames = data.show_voter_names;

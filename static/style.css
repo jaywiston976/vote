@@ -88,7 +88,7 @@ a:hover { text-decoration: underline; }
 label { display: block; font-weight: 600; margin: 14px 0 6px; font-size: 14px; }
 .hint { color: var(--muted); font-size: 13px; font-weight: 400; }
 
-input[type=text], input[type=password], textarea, input[type=file], select {
+input[type=text], input[type=password], input[type=number], textarea, input[type=file], select {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -170,6 +170,7 @@ textarea { min-height: 90px; resize: vertical; }
 .vote-option.abstain { border-style: dashed; color: var(--muted); }
 
 .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.stat-grid.four { grid-template-columns: repeat(4, 1fr); }
 .stat-box {
   background: var(--cau-green-soft); border: 1px solid var(--border);
   border-radius: 10px; padding: 16px; text-align: center;
@@ -184,6 +185,7 @@ textarea { min-height: 90px; resize: vertical; }
 }
 .chip.voted { background: var(--cau-green-light); color: var(--cau-green-dark); border-color: #b9dcc7; }
 .chip.pending { background: #fef6e7; color: var(--warn); border-color: #f3e0b5; }
+.chip.abstain-chip { background: #f1f3f2; color: var(--muted); border-color: var(--border); font-style: italic; }
 
 .result-bar-wrap { margin-bottom: 14px; }
 .result-bar-head { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; }
@@ -235,7 +237,7 @@ textarea { min-height: 90px; resize: vertical; }
 /* 平板 */
 @media (max-width: 1024px) {
   .container { max-width: 100%; margin: 20px auto; padding: 0 20px; }
-  .stat-grid { grid-template-columns: repeat(3, 1fr); }
+  .stat-grid, .stat-grid.four { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* 手机与竖屏平板 */
@@ -272,7 +274,7 @@ textarea { min-height: 90px; resize: vertical; }
   .card { padding: 18px; border-radius: 10px; }
 
   /* 统计卡片单列 */
-  .stat-grid { grid-template-columns: 1fr; }
+  .stat-grid, .stat-grid.four { grid-template-columns: 1fr; }
 
   /* 触摸友好：按钮加大 */
   .btn { padding: 12px 20px; font-size: 15px; min-height: 44px; }
@@ -297,7 +299,7 @@ textarea { min-height: 90px; resize: vertical; }
   .row.between { flex-direction: column; align-items: flex-start; gap: 12px; }
 
   /* 防止 iOS 聚焦自动放大：输入字号 ≥16px */
-  input[type=text], input[type=password], textarea, input[type=file], select {
+  input[type=text], input[type=password], input[type=number], textarea, input[type=file], select {
     font-size: 16px;
     padding: 12px;
   }

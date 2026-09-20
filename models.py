@@ -53,7 +53,10 @@ class Poll(db.Model):
     creator_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
     allow_self_vote = db.Column(db.Boolean, default=False)   # 投票者能否投给自己，默认否
-    allow_abstain = db.Column(db.Boolean, default=False)     # 是否设置弃票选项
+    allow_abstain = db.Column(db.Boolean, default=False)     # 是否允许「弃票」（弃票 = 一票不投）
+    # 每人拥有的票数：7 表示每人必须投满 7 票，且必须投给 7 个不同的人。
+    # 默认 1，等价于历史版本的「单选」，旧数据升级后行为不变。
+    votes_per_voter = db.Column(db.Integer, default=1, nullable=False)
     is_closed = db.Column(db.Boolean, default=False)         # 是否已结束
     is_published = db.Column(db.Boolean, default=False)      # 发起人是否公布票数
     show_voter_names = db.Column(db.Boolean, default=False)  # 发起人页面是否显示选项后的投票者名字
@@ -92,6 +95,9 @@ class Voter(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)  # 匹配到的账号
     has_voted = db.Column(db.Boolean, default=False)
     voted_at = db.Column(db.DateTime, nullable=True)
+    # 弃票：该投票者主动选择「一票不投」。此时没有任何 Ballot 记录，
+    # 所以判断「是否已投过」必须用 has_voted，不能再用「有没有 ballot」。
+    abstained = db.Column(db.Boolean, default=False)
 
     user = db.relationship("User")
 
@@ -103,7 +109,9 @@ class Voter(db.Model):
 class Ballot(db.Model):
     """选票记录：记录谁投给了哪个选项。
 
-    对普通参与者永远不可见；发起人可在自己页面选择显示/隐藏。
+    一人多票时，同一个人会有多行 Ballot（每投给一个选项一行）。
+    对普通参与者永远不可见；发起人可在自己页面选择显示/隐藏，
+    也可通过「导出 Excel」拿到完整明细。
     """
 
     __tablename__ = "ballots"
@@ -117,6 +125,11 @@ class Ballot(db.Model):
     voter = db.relationship("Voter")
     option = db.relationship("PollOption")
 
+    # 唯一约束必须是「同一人 + 同一选项」：允许一人投多票，但同一人不能重复
+    # 投给同一个人（即必须投给不同的人）。
+    # 注意：历史库上这里曾经是 (poll_id, voter_id)，会直接拦住第二票，
+    # 升级时由 app.py 的 ensure_schema_upgrades() 自动改掉。
     __table_args__ = (
-        db.UniqueConstraint("poll_id", "voter_id", name="uq_ballot_poll_voter"),
+        db.UniqueConstraint("poll_id", "voter_id", "option_id",
+                            name="uq_ballot_poll_voter_option"),
     )

@@ -7,12 +7,21 @@
   {% if poll.description %}<p class="muted">{{ poll.description }}</p>{% endif %}
   <p class="small muted">发起人：{{ poll.creator.real_name }}
     {% if poll.is_closed %}<span class="badge gray">已结束</span>{% else %}<span class="badge green">进行中</span>{% endif %}
+    <span class="badge gold">每人 {{ quota }} 票</span>
+    {% if not poll.allow_self_vote %}<span class="badge gray">不可投自己</span>{% endif %}
+    {% if poll.allow_abstain %}<span class="badge green">可弃票</span>{% endif %}
   </p>
 
   {% if has_voted %}
-    <div class="flash ok" style="margin-top:16px;">
-      你已完成投票。你的选择是：<b>{{ my_choice }}</b>
-    </div>
+    {% if my_abstained %}
+      <div class="flash warn" style="margin-top:16px;">
+        你已选择<b>弃票</b>：本次你没有投出任何一票。
+      </div>
+    {% else %}
+      <div class="flash ok" style="margin-top:16px;">
+        你已完成投票。你投给了：<b>{{ my_choices|join('、') if my_choices else '—' }}</b>
+      </div>
+    {% endif %}
     {% if not results %}
     <p class="muted small">为保护匿名，你只能看到自己的投票，无法查看他人的选择。各选项票数需等发起人公布后才可见。</p>
     {% endif %}
@@ -21,18 +30,27 @@
     <div class="flash warn" style="margin-top:16px;">投票已结束，你未在结束前投票。</div>
 
   {% else %}
-    <form method="post" class="mt">
+    <p class="small muted mt">
+      本次每人有 <b>{{ quota }}</b> 票，必须投给 <b>{{ quota }}</b> 个不同的人（不能重复投给同一个人）。
+      已选：<b id="picked">0</b> / {{ quota }}
+    </p>
+    <form method="post" class="mt" id="vote-form">
       {% for opt in options %}
-        <label class="vote-option {% if opt.is_abstain %}abstain{% endif %}">
-          <input type="radio" name="option_id" value="{{ opt.id }}" required>
-          {{ opt.name }}{% if opt.is_abstain %}（弃票）{% endif %}
+        <label class="vote-option">
+          <input type="checkbox" class="opt-box" name="option_ids" value="{{ opt.id }}">
+          {{ opt.name }}
         </label>
       {% endfor %}
-      <button class="btn mt" type="submit"
-              onclick="return confirm('投票后无法修改，确定提交？');">提交投票</button>
+      {% if poll.allow_abstain %}
+        <label class="vote-option abstain">
+          <input type="checkbox" id="abstain-box" name="abstain" value="1">
+          弃票（本次不投给任何人；勾选后上面所有选项都会被清空并锁定）
+        </label>
+      {% endif %}
+      <button class="btn mt" type="submit" id="submit-btn" disabled>提交投票</button>
     </form>
     <p class="small muted mt">
-      本次投票{% if poll.allow_self_vote %}允许{% else %}不允许{% endif %}投给自己 ·
+      本次投票{% if poll.allow_self_vote %}允许{% else %}不允许{% endif %}投给自己{% if not poll.allow_self_vote %}（与你同名的选项已自动隐藏，无法选中）{% endif %} ·
       投票完全匿名，其他参与者与你都无法查看谁投了谁。
     </p>
   {% endif %}
@@ -59,4 +77,63 @@
 
   <div class="mt"><a class="btn secondary sm" href="{{ url_for('index') }}">返回主页</a></div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const QUOTA = {{ quota }};
+  const form = document.getElementById('vote-form');
+  if (!form) return;
+
+  const boxes = Array.from(document.querySelectorAll('.opt-box'));
+  const abstain = document.getElementById('abstain-box');
+  const picked = document.getElementById('picked');
+  const btn = document.getElementById('submit-btn');
+
+  function sync() {
+    // 弃票 = 一票都不投：清空并锁死其他选项
+    if (abstain && abstain.checked) {
+      boxes.forEach(b => { b.checked = false; b.disabled = true; });
+      picked.textContent = '0（弃票）';
+      btn.disabled = false;
+      btn.textContent = '确认弃票（一票不投）';
+      return;
+    }
+    boxes.forEach(b => { b.disabled = false; });
+    const n = boxes.filter(b => b.checked).length;
+    picked.textContent = n;
+    if (QUOTA === 1) {
+      // 单选：保持和旧版本一致的文案
+      btn.disabled = (n !== 1);
+      btn.textContent = '提交投票';
+    } else {
+      btn.disabled = (n !== QUOTA);
+      btn.textContent = (n === QUOTA) ? '提交投票' : ('还需再选 ' + (QUOTA - n) + ' 人');
+    }
+  }
+
+  boxes.forEach(function (b) {
+    b.addEventListener('change', function () {
+      const n = boxes.filter(x => x.checked).length;
+      if (n > QUOTA) {
+        b.checked = false;
+        alert('每人只有 ' + QUOTA + ' 票，不能重复投给同一个人。');
+      }
+      sync();
+    });
+  });
+
+  if (abstain) abstain.addEventListener('change', sync);
+
+  form.addEventListener('submit', function (e) {
+    if (abstain && abstain.checked) {
+      return confirm('确认弃票？弃票后一票都不投出，且提交后无法修改。');
+    }
+    return confirm('投票后无法修改，确定提交？');
+  });
+
+  sync();
+})();
+</script>
 {% endblock %}
