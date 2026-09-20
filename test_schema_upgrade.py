@@ -428,6 +428,112 @@ check("全新空库可直接启动（无需先有表）",
       "FRESH:" in (p.stdout or "") and "'status': 'ok'" in (p.stdout or ""),
       ((p.stdout or "")[-200:] + (p.stderr or "")[-300:]))
 
+# --- 极端输入：字段超长必须友好拒绝，不能 500（线上曾实测出 5 处 500）---
+print("\n=== I. 极端输入（字段超长）===")
+logout()
+r = client.post("/register", data={"real_name": "超长" + "测" * 80, "password": "abc123",
+                                   "password2": "abc123"}, follow_redirects=True)
+check("超长姓名（84 字）注册被友好拒绝",
+      r.status_code == 200 and "过长" in r.get_data(as_text=True), r.status_code)
+r = client.post("/register", data={"real_name": "临时长密码", "password": "a" * 300,
+                                   "password2": "a" * 300}, follow_redirects=True)
+check("超长密码（300 位）注册被友好拒绝",
+      r.status_code == 200 and "过长" in r.get_data(as_text=True), r.status_code)
+
+login("admin", "muyu123")
+r = client.post("/poll/create", data={"title": "超长" + "题" * 300, "votes_per_voter": "1",
+                                      "options": ["甲", "乙"], "voter_names": "王五"},
+                follow_redirects=True)
+check("超长投票标题（304 字）被友好拒绝",
+      r.status_code == 200 and "过长" in r.get_data(as_text=True), r.status_code)
+r = client.post("/poll/create", data={"title": "超长选项场次", "votes_per_voter": "1",
+                                      "options": ["选" * 300, "乙"], "voter_names": "王五"},
+                follow_redirects=True)
+check("超长选项名（302 字）被友好拒绝",
+      r.status_code == 200 and "过长" in r.get_data(as_text=True), r.status_code)
+r = client.post("/poll/create", data={"title": "超长名单场次", "votes_per_voter": "1",
+                                      "options": ["甲", "乙"],
+                                      "voter_names": "王五\n" + "名" * 80},
+                follow_redirects=True)
+body = r.get_data(as_text=True)
+check("名单里的超长姓名被忽略并提示（投票仍创建成功）",
+      "投票创建成功" in body and "忽略" in body,
+      body[body.find("flash"):body.find("flash") + 120] if "flash" in body else body[:80])
+
+# --- 修改密码 ---
+print("\n=== J. 修改密码 ===")
+
+
+def pwd_after_restart(db_env, check_pwd):
+    """起一个新进程（模拟 Render 重启/唤醒），看 admin 的密码变成什么。"""
+    code = ("import app;from models import User;"
+            "app.app.app_context().push();"
+            "u=User.query.filter_by(real_name='admin').first();"
+            "print('OK' if u.check_password('%s') else 'RESET')" % check_pwd)
+    p = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=db_env,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    return (p.stdout or "").strip()
+
+
+logout()
+login("张三", "123")
+r = client.get("/change_password", follow_redirects=True)
+check("J1 登录后能打开改密码页", "修改密码" in r.get_data(as_text=True))
+
+r = client.post("/change_password", data={"old_password": "wrongpwd", "new_password": "new123",
+                                          "new_password2": "new123"}, follow_redirects=True)
+check("J2 原密码错误被拒绝", "原密码不正确" in r.get_data(as_text=True))
+r = client.post("/change_password", data={"old_password": "123", "new_password": "new123",
+                                          "new_password2": "new456"}, follow_redirects=True)
+check("J3 两次新密码不一致被拒绝", "不一致" in r.get_data(as_text=True))
+r = client.post("/change_password", data={"old_password": "123", "new_password": "new!@#",
+                                          "new_password2": "new!@#"}, follow_redirects=True)
+check("J4 新密码含非法字符被拒绝", "只能使用大小写字母和数字" in r.get_data(as_text=True))
+r = client.post("/change_password", data={"old_password": "123", "new_password": "123",
+                                          "new_password2": "123"}, follow_redirects=True)
+check("J5 新密码与原密码相同被拒绝", "不能与原密码相同" in r.get_data(as_text=True))
+r = client.post("/change_password", data={"old_password": "", "new_password": "new123",
+                                          "new_password2": "new123"}, follow_redirects=True)
+check("J6 原密码为空被拒绝", "不能为空" in r.get_data(as_text=True))
+r = client.post("/change_password", data={"old_password": "123", "new_password": "a" * 200,
+                                          "new_password2": "a" * 200}, follow_redirects=True)
+check("J7 新密码超长被拒绝（不 500）", "过长" in r.get_data(as_text=True))
+
+r = client.post("/change_password", data={"old_password": "123", "new_password": "new123",
+                                          "new_password2": "new123"}, follow_redirects=True)
+check("J8 正常修改密码成功", "密码修改成功" in r.get_data(as_text=True))
+logout()
+r = client.post("/login", data={"real_name": "张三", "password": "new123"}, follow_redirects=True)
+check("J9 新密码可以登录", "我的主页" in r.get_data(as_text=True))
+logout()
+r = client.post("/login", data={"real_name": "张三", "password": "123"}, follow_redirects=True)
+check("J10 旧密码已失效", "姓名或密码错误" in r.get_data(as_text=True))
+logout()
+r = client.get("/change_password", follow_redirects=True)
+check("J11 未登录访问改密码页被引导登录", "请先登录" in r.get_data(as_text=True))
+
+# admin 改密码：未设环境变量时应持久生效
+login("admin", "muyu123")
+r = client.post("/change_password", data={"old_password": "muyu123", "new_password": "admin999",
+                                          "new_password2": "admin999"}, follow_redirects=True)
+check("J12 admin 可以改自己的密码", "密码修改成功" in r.get_data(as_text=True))
+check("J13 未设环境变量时，重启后 admin 新密码仍生效（不被覆盖回默认值）",
+      pwd_after_restart(dict(os.environ), "admin999") == "OK",
+      pwd_after_restart(dict(os.environ), "admin999"))
+
+# 设了环境变量：以环境变量为准（忘记密码时的找回通道）
+env_force = dict(os.environ)
+env_force["ADMIN_PASSWORD"] = "envpwd888"
+pwd_after_restart(env_force, "envpwd888")
+check("J14 设了 ADMIN_PASSWORD 时，重启会把密码校正回环境变量的值",
+      pwd_after_restart(env_force, "envpwd888") == "OK")
+
+env_back = dict(os.environ)
+env_back["ADMIN_PASSWORD"] = "muyu123"
+pwd_after_restart(env_back, "muyu123")
+check("J15 用环境变量可把 admin 密码找回（恢复现场）",
+      pwd_after_restart(env_back, "muyu123") == "OK")
+
 # ---------------------------------------------------------------------------
 print("\n=== 汇总 ===")
 print("  通过 %d 项，失败 %d 项" % (len(PASS), len(FAIL)))

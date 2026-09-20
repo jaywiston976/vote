@@ -21,6 +21,7 @@
         <a href="{{ url_for('create_poll') }}">发起投票</a>
         {% endif %}
         <a href="{{ url_for('index') }}">我的主页</a>
+        <a href="{{ url_for('change_password') }}">改密码</a>
         <a href="{{ url_for('logout') }}">退出</a>
       {% else %}
         <a href="{{ url_for('login') }}">登录</a>

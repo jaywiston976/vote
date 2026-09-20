@@ -152,7 +152,9 @@ def ensure_admin_account():
     抗并发：gunicorn 多 worker 会同时执行本函数，若都判定 admin 不存在
     并各自 INSERT，会触发唯一约束冲突。这里捕获 IntegrityError 回滚重查，
     保证任意 worker、任意次数执行都安全且结果一致。
-    每次启动都把 admin 密码校正为 ADMIN_PASSWORD，避免旧库里的旧密码残留。
+    密码策略：只有在环境变量 ADMIN_PASSWORD 被显式设置时，才在每次启动把
+    admin 密码校正为该值（忘记密码时的找回通道）；未设置环境变量时不动数据库
+    里的密码，管理员可在「修改密码」页面自行改密码并永久生效。
 
     兼容旧库：早期版本按 username 识别管理员，admin 行的 real_name 可能是
     「管理员」/「系统管理员」。登录方式改为「真实姓名」后，这类行既无法用
@@ -178,9 +180,14 @@ def ensure_admin_account():
                 admin = User.query.filter_by(real_name=ADMIN_NAME).first()
 
     if admin is not None:
-        # 校正密码与 username，确保始终是 admin / ADMIN_PASSWORD
+        # 密码是否强制校正，取决于「有没有明确设置环境变量 ADMIN_PASSWORD」：
+        #   设了  → 以环境变量为准，每次启动都把密码校正回去（方便忘记密码时找回）；
+        #   没设  → 不碰数据库里的密码，这样管理员在「修改密码」页面改的密码
+        #           才能持久生效，不会被每次重启/唤醒覆盖回默认值。
+        # username 的校正始终执行（保证能按真实姓名登录）。
+        force_sync = "ADMIN_PASSWORD" in os.environ
         changed = False
-        if not admin.check_password(ADMIN_PASSWORD):
+        if force_sync and not admin.check_password(ADMIN_PASSWORD):
             admin.set_password(ADMIN_PASSWORD)
             changed = True
         if admin.username != ADMIN_NAME:
@@ -607,6 +614,48 @@ def logout():
     session.clear()
     flash("已退出登录", "ok")
     return redirect(url_for("index"))
+
+
+@app.route("/change_password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    """修改密码：输入原密码验证身份，再设置新密码（两次输入一致）。
+
+    校验沿用注册时的规则：只能用大小写字母和数字，长度上限 MAX_PASSWORD_LEN。
+    普通账号改完永久生效；admin 的密码另有环境变量优先级（见模板页底部说明）。
+    """
+    user = current_user()
+    if request.method == "POST":
+        old_password = request.form.get("old_password") or ""
+        new_password = request.form.get("new_password") or ""
+        new_password2 = request.form.get("new_password2") or ""
+
+        if not old_password or not new_password:
+            flash("原密码和新密码都不能为空", "error")
+            return render_template("change_password.html")
+        if not user.check_password(old_password):
+            flash("原密码不正确", "error")
+            return render_template("change_password.html")
+        if new_password != new_password2:
+            flash("两次输入的新密码不一致", "error")
+            return render_template("change_password.html")
+        pwd_error = validate_password_charset(new_password)
+        if pwd_error:
+            flash(pwd_error, "error")
+            return render_template("change_password.html")
+        if len(new_password) > MAX_PASSWORD_LEN:
+            flash("新密码过长（最多 %d 位）" % MAX_PASSWORD_LEN, "error")
+            return render_template("change_password.html")
+        if new_password == old_password:
+            flash("新密码不能与原密码相同", "warn")
+            return render_template("change_password.html")
+
+        user.set_password(new_password)
+        db.session.commit()
+        flash("密码修改成功，下次登录请使用新密码", "ok")
+        return redirect(url_for("index"))
+
+    return render_template("change_password.html")
 
 
 # ---------------------------------------------------------------------------
