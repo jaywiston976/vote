@@ -106,6 +106,32 @@ def validate_password_charset(password: str):
 ADMIN_NAME = "admin"
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "muyu123")
 
+# ---------------------------------------------------------------------------
+# 字段长度上限（必须与 models.py 的列定义一致）
+# ---------------------------------------------------------------------------
+# 这些校验不是装饰：PostgreSQL 的 varchar(n) 遇到超长值不会截断，而是直接抛
+# DataError，页面变成 500。线上实测确认过 5 处会打成 500：
+# 超长姓名、超长密码、超长投票标题、超长选项名、名单里的超长姓名。
+MAX_NAME_LEN = 64       # users.real_name / users.username / voters.name
+MAX_TITLE_LEN = 200     # polls.title
+MAX_OPTION_LEN = 200    # poll_options.name
+MAX_PASSWORD_LEN = 128  # users.password_hash（明文前缀 + 密码）
+
+
+def filter_long_names(names, label="姓名"):
+    """剔除超长姓名（上限 MAX_NAME_LEN），返回 (保留的, 被剔除的)。
+
+    名单可能来自粘贴或 Excel 导入，里面混进整段备注文字是常见情况，
+    不处理就会把整场投票创建打成 500。
+    """
+    ok, dropped = [], []
+    for n in names:
+        n = (n or "").strip()
+        if not n:
+            continue
+        (ok if len(n) <= MAX_NAME_LEN else dropped).append(n)
+    return ok, dropped
+
 
 def is_admin(user) -> bool:
     """仅 admin 这一特定账号可以发起 / 管理投票。
@@ -520,6 +546,13 @@ def register():
         if not real_name or not password:
             flash("真实姓名、密码均不能为空", "error")
             return render_template("register.html")
+        if len(real_name) > MAX_NAME_LEN:
+            flash("真实姓名过长（最多 %d 个字符，当前 %d 个）"
+                  % (MAX_NAME_LEN, len(real_name)), "error")
+            return render_template("register.html")
+        if len(password) > MAX_PASSWORD_LEN:
+            flash("密码过长（最多 %d 位，当前 %d 位）" % (MAX_PASSWORD_LEN, len(password)), "error")
+            return render_template("register.html")
         if password != password2:
             flash("两次输入的密码不一致", "error")
             return render_template("register.html")
@@ -605,8 +638,18 @@ def create_poll():
         if not title:
             flash("请填写投票标题", "error")
             return render_template("create_poll.html")
+        if len(title) > MAX_TITLE_LEN:
+            flash("投票标题过长（最多 %d 个字符，当前 %d 个）"
+                  % (MAX_TITLE_LEN, len(title)), "error")
+            return render_template("create_poll.html")
         if len(options) < 2:
             flash("至少需要 2 个有效选项", "error")
+            return render_template("create_poll.html")
+        too_long_options = [o for o in options if len(o) > MAX_OPTION_LEN]
+        if too_long_options:
+            flash("选项名过长（最多 %d 个字符）：%s"
+                  % (MAX_OPTION_LEN, "、".join(o[:12] + "…" for o in too_long_options[:3])),
+                  "error")
             return render_template("create_poll.html")
         if votes_per_voter < 1:
             flash("每人票数至少为 1", "error")
@@ -660,6 +703,12 @@ def create_poll():
                 flash("图片名单需手动录入姓名；已忽略图片文件（无法自动识别文字）", "warn")
 
         # 发起人不能在名单中
+        names, dropped = filter_long_names(names)
+        if dropped:
+            flash("已忽略 %d 个过长的姓名（上限 %d 字）：%s"
+                  % (len(dropped), MAX_NAME_LEN,
+                     "、".join(d[:12] + "…" for d in dropped[:3])), "warn")
+
         creator_name = user.real_name
         final_names, seen = [], set()
         for n in names:
@@ -829,6 +878,10 @@ def add_voter(poll_id):
                 flash(f"名单文件解析失败：{e}", "warn")
         else:
             flash("图片名单无法自动识别，请手动录入", "warn")
+
+    names, dropped = filter_long_names(names)
+    if dropped:
+        flash("已忽略 %d 个过长的姓名（上限 %d 字）" % (len(dropped), MAX_NAME_LEN), "warn")
 
     existing = {v.name for v in poll.voters}
     added = 0
@@ -1184,6 +1237,28 @@ def vote(poll_id):
 def too_large(e):
     flash("上传文件过大（上限 8MB）", "error")
     return redirect(url_for("index"))
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    """兜底：任何未预料的异常都给一个友好页面，不把堆栈暴露给用户。
+
+    先回滚会话，避免坏事务污染同一个 worker 后续的请求。
+    """
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
+    return (
+        "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>服务器出错</title></head>"
+        "<body style=\"font-family:'Microsoft YaHei',sans-serif;padding:48px;color:#1f2a24;\">"
+        "<h2 style=\"color:#0a5730;margin:0 0 12px;\">服务器出了一点问题</h2>"
+        "<p style=\"color:#6b7c72;\">请返回上一页重试。若持续出现，请把操作步骤告诉发起人。</p>"
+        "<p><a href=\"/\" style=\"color:#0e6a3b;\">返回首页</a></p>"
+        "</body></html>"
+    ), 500
 
 
 @app.route("/healthz")
